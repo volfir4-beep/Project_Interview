@@ -18,6 +18,8 @@ export type InterviewerPersona =
 
 export type QuestionType = 'follow-up' | 'scenario' | 'role-play';
 export type Difficulty = 'easier' | 'same' | 'harder';
+export type DifficultyLevel = 'easy' | 'medium' | 'hard';
+export type InterviewStatus = 'active' | 'complete';
 
 export type DimensionScore = {
   score: number;
@@ -48,9 +50,16 @@ export type EvidenceEntry = {
 
 export type CandidateState = {
   agentId: string;
+  attemptId?: string;
+  ownerUserId?: string;
+  ownerName?: string;
   createdAt: number;
   updatedAt: number;
+  completedAt?: number;
+  status: InterviewStatus;
   turnCount: number;
+  targetQuestionCount: number;
+  currentDifficulty: DifficultyLevel;
   averages: Record<ScoreDimension, number>;
   strengths: ScoreDimension[];
   weaknesses: ScoreDimension[];
@@ -68,10 +77,18 @@ export type CandidateState = {
 };
 
 export type FinalReport = {
+  attemptId?: string;
+  agentId?: string;
+  candidateName?: string;
+  summary: string;
   overallScore: number;
   dimensions: Record<ScoreDimension, number>;
+  questionCount: number;
+  targetQuestionCount: number;
+  highestDifficulty: DifficultyLevel;
   strengths: string[];
   weaknesses: string[];
+  shortcomings: string[];
   evidence: EvidenceEntry[];
   contradictions: string[];
   recommendations: string[];

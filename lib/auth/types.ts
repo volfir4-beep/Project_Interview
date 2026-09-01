@@ -1,4 +1,10 @@
-import type { ScoreDimension } from '@/lib/interview/types';
+import type {
+  CandidateState,
+  DifficultyLevel,
+  FinalReport,
+  InterviewStatus,
+  ScoreDimension,
+} from '@/lib/interview/types';
 
 export type AuthUser = {
   id: string;
@@ -21,7 +27,26 @@ export type LeaderboardEntry = {
   createdAt: number;
 };
 
+export type InterviewAttempt = {
+  id: string;
+  agentId: string;
+  userId: string;
+  candidateName: string;
+  status: InterviewStatus;
+  currentDifficulty: DifficultyLevel;
+  questionCount: number;
+  targetQuestionCount: number;
+  overallScore?: number;
+  dimensions: Record<ScoreDimension, number>;
+  startedAt: number;
+  completedAt?: number;
+  report?: FinalReport;
+  latestState?: CandidateState;
+};
+
 export type AppStore = {
   users: StoredUser[];
   leaderboard: LeaderboardEntry[];
+  interviews: InterviewAttempt[];
+  activeSessions: CandidateState[];
 };

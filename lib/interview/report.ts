@@ -7,19 +7,31 @@ function overallFromAverages(state: CandidateState): number {
 }
 
 function fallbackReport(state: CandidateState): FinalReport {
+  const shortcomings = state.weaknesses.map(
+    (dimension) =>
+      `${dimension}: average score ${state.averages[dimension]}/100 and needs more specific evidence.`,
+  );
   return {
+    attemptId: state.attemptId,
+    agentId: state.agentId,
+    candidateName: state.ownerName,
+    summary: `Completed ${state.turnCount} of ${state.targetQuestionCount} planned answers. The strongest areas were ${state.strengths[0] ?? 'still emerging'}, while the main improvement areas were ${state.weaknesses[0] ?? 'answer depth and specificity'}.`,
     overallScore: overallFromAverages(state),
     dimensions: { ...state.averages },
+    questionCount: state.turnCount,
+    targetQuestionCount: state.targetQuestionCount,
+    highestDifficulty: state.currentDifficulty,
     strengths: state.strengths.map(
       (dimension) => `${dimension}: consistent evidence around ${state.averages[dimension]}/100`,
     ),
     weaknesses: state.weaknesses.map(
       (dimension) => `${dimension}: trailing at ${state.averages[dimension]}/100`,
     ),
+    shortcomings,
     evidence: state.evidenceLog.slice(-18),
     contradictions: state.redFlags,
     recommendations: [
-      state.weaknesses[0]
+      shortcomings[0]
         ? `Practice a concrete example that shows ${state.weaknesses[0]} with a clear situation, action, and result.`
         : 'Keep answers specific: name the constraint, the trade-off, and the outcome.',
       'Pause instead of filling with hedges; finish one thought before the next.',
@@ -36,14 +48,20 @@ export async function generateFinalReport(state: CandidateState): Promise<FinalR
   try {
     const raw = await geminiJsonObject<{
       overallScore?: number;
+      summary?: string;
       strengths?: string[];
       weaknesses?: string[];
+      shortcomings?: string[];
       contradictions?: string[];
       recommendations?: string[];
     }>(
-      'Write a hiring-style interview report. Use only the provided scores and quotes. Return JSON with overallScore (0-100), strengths[], weaknesses[], contradictions[], recommendations[] (actionable).',
+      'Write a hiring-style interview report. Use only the provided scores and quotes. Return JSON with overallScore (0-100), summary (2 sentences), strengths[], weaknesses[], shortcomings[], contradictions[], recommendations[] (actionable solutions for the shortcomings).',
       JSON.stringify({
+        candidateName: state.ownerName,
         averages: state.averages,
+        currentDifficulty: state.currentDifficulty,
+        questionCount: state.turnCount,
+        targetQuestionCount: state.targetQuestionCount,
         evidence: state.evidenceLog.slice(-24),
         redFlags: state.redFlags,
         turns: state.assessments.map((item) => ({
@@ -63,12 +81,25 @@ export async function generateFinalReport(state: CandidateState): Promise<FinalR
         : overallFromAverages(state);
 
     return {
+      attemptId: state.attemptId,
+      agentId: state.agentId,
+      candidateName: state.ownerName,
+      summary:
+        typeof raw.summary === 'string' && raw.summary.trim().length > 0
+          ? raw.summary.trim()
+          : fallbackReport(state).summary,
       overallScore: overall,
       dimensions: { ...state.averages },
+      questionCount: state.turnCount,
+      targetQuestionCount: state.targetQuestionCount,
+      highestDifficulty: state.currentDifficulty,
       strengths: Array.isArray(raw.strengths) ? raw.strengths.filter((s) => typeof s === 'string') : [],
       weaknesses: Array.isArray(raw.weaknesses)
         ? raw.weaknesses.filter((s) => typeof s === 'string')
         : [],
+      shortcomings: Array.isArray(raw.shortcomings)
+        ? raw.shortcomings.filter((s) => typeof s === 'string')
+        : fallbackReport(state).shortcomings,
       evidence: state.evidenceLog.slice(-18),
       contradictions: Array.isArray(raw.contradictions)
         ? raw.contradictions.filter((s) => typeof s === 'string')

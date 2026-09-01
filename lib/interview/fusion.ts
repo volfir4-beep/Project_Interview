@@ -1,4 +1,11 @@
-import { SCORE_DIMENSIONS, type CandidateState, type ScoreDimension, type TurnAssessment } from './types';
+import {
+  SCORE_DIMENSIONS,
+  type CandidateState,
+  type Difficulty,
+  type DifficultyLevel,
+  type ScoreDimension,
+  type TurnAssessment,
+} from './types';
 
 const PERSONA_LABEL: Record<CandidateState['director']['nextPersona'], string> = {
   technical: 'Technical Interviewer',
@@ -34,13 +41,38 @@ function trend(values: number[]): 'up' | 'down' | 'flat' {
   return 'flat';
 }
 
-export function createCandidateState(agentId: string): CandidateState {
+function applyDifficultyShift(
+  current: DifficultyLevel,
+  shift: Difficulty,
+): DifficultyLevel {
+  const order: DifficultyLevel[] = ['easy', 'medium', 'hard'];
+  const index = order.indexOf(current);
+  if (shift === 'harder') return order[Math.min(order.length - 1, index + 1)];
+  if (shift === 'easier') return order[Math.max(0, index - 1)];
+  return current;
+}
+
+export function createCandidateState(
+  agentId: string,
+  options?: {
+    attemptId?: string;
+    ownerUserId?: string;
+    ownerName?: string;
+    targetQuestionCount?: number;
+  },
+): CandidateState {
   const now = Date.now();
   return {
     agentId,
+    attemptId: options?.attemptId,
+    ownerUserId: options?.ownerUserId,
+    ownerName: options?.ownerName,
     createdAt: now,
     updatedAt: now,
+    status: 'active',
     turnCount: 0,
+    targetQuestionCount: options?.targetQuestionCount ?? 6,
+    currentDifficulty: 'easy',
     averages: emptyAverages(),
     strengths: [],
     weaknesses: [],
@@ -53,7 +85,8 @@ export function createCandidateState(agentId: string): CandidateState {
       nextPersona: 'technical',
       difficulty: 'same',
       questionType: 'follow-up',
-      brief: 'Start as Technical Interviewer at medium difficulty with a concrete follow-up.',
+      brief:
+        'Start as Technical Interviewer at easy difficulty. Ask one concrete opening question.',
     },
   };
 }
@@ -86,6 +119,18 @@ export function fuseAssessment(
     8,
     Math.min(90, Math.round(70 / Math.max(1, assessments.length) + spread / 4)),
   );
+  const latestTurnAverage = Math.round(
+    mean(SCORE_DIMENSIONS.map((dimension) => assessment.scores[dimension].score)),
+  );
+  const shift =
+    latestTurnAverage >= 78
+      ? 'harder'
+      : latestTurnAverage <= 52
+        ? 'easier'
+        : assessment.recommendedDifficulty;
+  const currentDifficulty = applyDifficultyShift(previous.currentDifficulty, shift);
+  const turnCount = assessments.length;
+  const isComplete = turnCount >= previous.targetQuestionCount;
 
   const redFlags = Array.from(
     new Set([
@@ -109,12 +154,17 @@ export function fuseAssessment(
 
   const director = {
     nextPersona: assessment.recommendedPersona,
-    difficulty: assessment.recommendedDifficulty,
+    difficulty: shift,
     questionType: assessment.recommendedQuestionType,
     brief: [
+      isComplete
+        ? 'The interview is complete. Do not ask another question. Give a short closing thank-you and stop.'
+        : '',
       `Next speaker: ${PERSONA_LABEL[assessment.recommendedPersona]}.`,
       `Question type: ${assessment.recommendedQuestionType}.`,
-      `Difficulty: ${assessment.recommendedDifficulty}.`,
+      `Difficulty adjustment: ${shift}.`,
+      `Current level: ${currentDifficulty}.`,
+      `Progress: ${turnCount}/${previous.targetQuestionCount} candidate answers.`,
       strengths.length
         ? `Lean on strengths: ${strengths.join(', ')}.`
         : 'No clear strength yet — keep probing.',
@@ -132,7 +182,10 @@ export function fuseAssessment(
   return {
     ...previous,
     updatedAt: Date.now(),
-    turnCount: assessments.length,
+    completedAt: isComplete ? Date.now() : previous.completedAt,
+    status: isComplete ? 'complete' : previous.status,
+    turnCount,
+    currentDifficulty,
     averages,
     strengths,
     weaknesses,
